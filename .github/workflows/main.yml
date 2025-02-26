@@ -6,7 +6,7 @@ on:
       FLOW_NAME:
         description: 'AWS AppFlow Flow Name'
         required: true
-        default: 'SalesforceToS3Flow'
+        default: 'SalesforceAppFlow-Test'
       SALESFORCE_OBJECT:
         description: 'Salesforce Object to Extract'
         required: true
@@ -14,7 +14,7 @@ on:
       S3_BUCKET:
         description: 'S3 Bucket Name'
         required: true
-        default: 'appflow864'
+        default: 'newappflow853'
       REGION:
         description: 'AWS Region'
         required: true

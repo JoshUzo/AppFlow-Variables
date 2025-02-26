@@ -1,0 +1,124 @@
+name: Create AWS AppFlow
+
+on:
+  workflow_dispatch:
+    inputs:
+      FLOW_NAME:
+        description: 'AWS AppFlow Flow Name'
+        required: true
+        default: 'SalesforceToS3Flow'
+      SALESFORCE_OBJECT:
+        description: 'Salesforce Object to Extract'
+        required: true
+        default: 'Case'
+      S3_BUCKET:
+        description: 'S3 Bucket Name'
+        required: true
+        default: 'appflow864'
+      REGION:
+        description: 'AWS Region'
+        required: true
+        default: 'us-east-2'
+      
+jobs:
+  create_appflow:
+    runs-on: ubuntu-latest
+    env:
+      AWS_REGION: ${{ inputs.REGION }}
+      FLOW_NAME: ${{ inputs.FLOW_NAME }}
+      SALESFORCE_OBJECT: ${{ inputs.SALESFORCE_OBJECT }}
+      S3_BUCKET: ${{ inputs.S3_BUCKET }}
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: Install AWS CLI
+        run: |
+          sudo apt update
+          sudo apt install -y unzip
+          curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+          unzip awscliv2.zip
+          sudo ./aws/install --update
+          aws --version  # Verify installation
+
+      - name: Configure AWS Credentials
+        run: |
+          aws configure set aws_access_key_id ${{ secrets.ACCESS_KEY }}
+          aws configure set aws_secret_access_key ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws configure set region ${{ env.AWS_REGION }}
+           
+      - name: Update S3 Bucket Policy
+        run: |
+          aws s3api put-bucket-policy --bucket ${{ env.S3_BUCKET }} --policy '{
+              "Version": "2012-10-17",
+              "Statement": [
+                  {
+                      "Effect": "Allow",
+                      "Principal": {
+                          "Service": "appflow.amazonaws.com"
+                      },
+                      "Action": [
+                          "s3:PutObject",
+                          "s3:GetBucketAcl",
+                          "s3:PutObjectAcl"
+                      ],
+                      "Resource": [
+                          "arn:aws:s3:::${{ env.S3_BUCKET }}",
+                          "arn:aws:s3:::${{ env.S3_BUCKET }}/*"
+                      ]
+                  }
+              ]
+          }'
+
+      - name: Create AWS AppFlow
+        run: |
+          aws appflow create-flow \
+            --flow-name "${{ env.FLOW_NAME }}" \
+            --description "Sync Salesforce data to S3" \
+            --source-flow-config '{
+              "connectorType": "Salesforce",
+              "sourceConnectorProperties": {
+                "Salesforce": {
+                  "object": "${{ env.SALESFORCE_OBJECT }}"
+                }
+              },
+              "connectorProfileName": "Test-Connection"
+            }' \
+            --destination-flow-config-list '[
+              {
+                "connectorType": "S3",
+                "destinationConnectorProperties": {
+                  "S3": {
+                    "bucketName": "${{ env.S3_BUCKET }}",
+                    "s3OutputFormatConfig": {
+                      "fileType": "CSV"
+                    }
+                  }
+                }
+              }
+            ]' \
+            --tasks '[{
+                "sourceFields": ["Id", "ContactEmail", "CaseNumber"],
+                "taskType": "Filter",
+                "connectorOperator": {
+                "Salesforce": "PROJECTION"
+                },
+                "taskProperties": {}
+            },
+            {
+            "taskType": "Map",
+            "sourceFields": ["Id"],
+            "destinationField": "Id"
+            },
+            {
+            "taskType": "Map",
+            "sourceFields": ["ContactEmail"],
+            "destinationField": "ContactEmail"
+            },
+            {
+            "taskType": "Map",
+            "sourceFields": ["CaseNumber"],
+            "destinationField": "CaseNumber"
+            }]' \
+            --trigger-config '{ "triggerType": "OnDemand" }'

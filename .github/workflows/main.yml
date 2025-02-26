@@ -14,7 +14,6 @@ on:
       S3_BUCKET:
         description: 'S3 Bucket Name'
         required: true
-        default: 'newappflow853'
       REGION:
         description: 'AWS Region'
         required: true
